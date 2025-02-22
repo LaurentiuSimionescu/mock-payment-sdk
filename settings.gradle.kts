@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "MockPaymentSDK"
+rootProject.name = "PaymentSDK"
 include(":app")
