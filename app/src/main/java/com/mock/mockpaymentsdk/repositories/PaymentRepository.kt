@@ -1,37 +1,28 @@
-package com.mock.mockpaymentsdk.repositories
-
 import com.mock.mockpaymentsdk.models.PaymentRequest
 import com.mock.mockpaymentsdk.models.PaymentResponse
 import com.mock.mockpaymentsdk.network.PaymentApi
-import retrofit2.Call
-import retrofit2.Callback
-import retrofit2.Response
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import retrofit2.HttpException
 
-open class PaymentRepository(private val api: PaymentApi) {
+internal open class PaymentRepository(private val api: PaymentApi) {
 
-    open fun processPayment(
-        request: PaymentRequest,
-        callback: (Result<PaymentResponse>) -> Unit
-    ) {
-        val call = api.payment(request)
-
-        call.enqueue(object : Callback<PaymentResponse> {
-            override fun onResponse(
-                call: Call<PaymentResponse>,
-                response: Response<PaymentResponse>
-            ) {
+    open suspend fun processPayment(request: PaymentRequest): Result<PaymentResponse> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val response = api.payment(request)
                 if (response.isSuccessful) {
                     response.body()?.let {
-                        callback(Result.success(it))
-                    } ?: callback(Result.failure(Exception("Empty response body")))
+                        Result.success(it)
+                    } ?: Result.failure(Exception("Empty response body"))
                 } else {
-                    callback(Result.failure(Exception("Error: ${response.errorBody()?.string()}")))
+                    Result.failure(Exception("Error: ${response.errorBody()?.string()}"))
                 }
+            } catch (e: HttpException) {
+                Result.failure(Exception("Network error: ${e.message}"))
+            } catch (e: Exception) {
+                Result.failure(e)
             }
-
-            override fun onFailure(call: Call<PaymentResponse>, t: Throwable) {
-                callback(Result.failure(t))
-            }
-        })
+        }
     }
 }

@@ -1,37 +1,43 @@
 package com.mock.mockpaymentsdk
 
+import PaymentRepository
 import com.mock.mockpaymentsdk.models.PaymentRequest
 import com.mock.mockpaymentsdk.models.PaymentResponse
-import com.mock.mockpaymentsdk.network.FakePaymentApi
-import com.mock.mockpaymentsdk.repositories.PaymentRepository
+import kotlinx.coroutines.delay
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
-class FakePaymentRepository : PaymentRepository(api = FakePaymentApi()) {
+internal class FakePaymentRepository : PaymentRepository(api = FakePaymentApi()) {
+
     private val lock = ReentrantLock()
+    private val transactionHistory = CopyOnWriteArrayList<PaymentResponse>()
+
     var lastRequest: PaymentRequest? = null
     var shouldFail = false
-    private val transactionHistory = mutableListOf<PaymentResponse>()
 
-    override fun processPayment(
-        request: PaymentRequest,
-        callback: (Result<PaymentResponse>) -> Unit
-    ) {
+    override suspend fun processPayment(request: PaymentRequest): Result<PaymentResponse> {
+        val transactionId: String?
+        val shouldFailCopy: Boolean
+
         lock.withLock {
             lastRequest = request
+            shouldFailCopy = shouldFail
+        }
 
-            Thread.sleep(300)
+        delay(300)
 
-            if (shouldFail) {
-                callback(Result.failure(Exception("Simulated payment failure")))
-            } else {
-                val transactionId = "txn-${System.currentTimeMillis()}"
-                val response = PaymentResponse("Success", transactionId)
+        return if (shouldFailCopy) {
+            Result.failure(Exception("Simulated payment failure"))
+        } else {
+            transactionId = "txn-${System.currentTimeMillis()}"
+            val response = PaymentResponse("Success", transactionId)
+
+            lock.withLock {
                 transactionHistory.add(response)
-                callback(Result.success(response))
             }
+
+            Result.success(response)
         }
     }
-
-    fun getTransactionHistory(): List<PaymentResponse> = transactionHistory.toList()
 }

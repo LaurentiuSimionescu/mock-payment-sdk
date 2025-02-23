@@ -6,7 +6,7 @@ import okhttp3.Interceptor
 import okhttp3.Response
 import java.io.IOException
 
-class RequestRetryInterceptor(private val maxRetries: Int = 3) : Interceptor {
+internal class RequestRetryInterceptor(private val maxRetries: Int = 3) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         var attempts = 0
         var response: Response? = null

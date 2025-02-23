@@ -1,12 +1,19 @@
+Mock Payment SDK
 
+Overview
 
-demo project
+This is a demo project showcasing a payment processing SDK with built-in safety mechanisms to prevent duplicate transactions. 
+The project is structured for scalability, testing, and CI/CD readiness.
 
-makes payment, has safety for the user not to send the same request twice
-.env is used tq be ready for CI CD, test and prod environments
-tests are written for the project
-there are a few layers of abstraction to make the code more readable and maintainable
-the SDK cannot be instantiated twice and it is thread safe same for the payment
+Features
+•	Prevents duplicate transactions – Ensures a user cannot send the same request twice.
+•	Thread-safe & Singleton SDK – Cannot be instantiated twice, ensuring safety.
+•	Environment-ready (.env) – Supports CI/CD, test, and production environments.
+•	Layered architecture – Improves code readability and maintainability.
+•	Tests – Covers multiple scenarios for reliability.
 
-todo:
-dont expose all classed externally
+Project Structure
+•	PaymentProcessor – Handles payments and ensures thread safety.
+•	PaymentRepository – Abstracts network requests.
+•	PaymentApi – Defines the API contract.
+•	PaymentSDK - SDK itself, destined for integration.

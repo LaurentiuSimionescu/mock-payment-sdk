@@ -8,7 +8,7 @@ import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 
-object PaymentNetworkProvider {
+internal object PaymentNetworkProvider {
 
     fun createPaymentApi(apiKey: String): PaymentApi {
         val client = OkHttpClient.Builder()

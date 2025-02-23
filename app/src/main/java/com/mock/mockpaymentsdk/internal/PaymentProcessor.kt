@@ -1,41 +1,45 @@
 package com.mock.mockpaymentsdk.internal
 
+import PaymentRepository
 import com.mock.mockpaymentsdk.errors.PaymentSDKPaymentInProgressException
 import com.mock.mockpaymentsdk.models.PaymentRequest
 import com.mock.mockpaymentsdk.models.PaymentResponse
-import com.mock.mockpaymentsdk.repositories.PaymentRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.util.UUID
-import java.util.concurrent.atomic.AtomicBoolean
 
-class PaymentProcessor(private val repository: PaymentRepository) {
+internal class PaymentProcessor(private val repository: PaymentRepository) {
 
-    private val isPaymentInProgress = AtomicBoolean(false)
+    private val mutex = Mutex()
+    private var isPaymentInProgress = false
     private var currentTransactionId: String? = null
 
-    fun processPayment(
+    suspend fun processPayment(
         amount: Int,
         currency: String,
-        recipient: String,
-        callback: (Result<PaymentResponse>) -> Unit
-    ) {
-        synchronized(this) {
-            if (isPaymentInProgress.get()) {
-                callback(Result.failure(PaymentSDKPaymentInProgressException()))
-                return
+        recipient: String
+    ): Result<PaymentResponse> {
+        return withContext(Dispatchers.IO) {
+            mutex.withLock {
+                if (isPaymentInProgress) {
+                    return@withContext Result.failure(PaymentSDKPaymentInProgressException())
+                }
+                isPaymentInProgress = true
             }
 
-            currentTransactionId = UUID.randomUUID().toString()
-            isPaymentInProgress.set(true)
-        }
+            try {
+                currentTransactionId = UUID.randomUUID().toString()
+                val request = PaymentRequest(amount.toString(), currency, recipient)
 
-        val request = PaymentRequest(amount.toString(), currency, recipient)
-
-        repository.processPayment(request) { result ->
-            synchronized(this) {
-                isPaymentInProgress.set(false)
-                currentTransactionId = null
+                repository.processPayment(request)
+            } finally {
+                mutex.withLock {
+                    isPaymentInProgress = false
+                    currentTransactionId = null
+                }
             }
-            callback(result)
         }
     }
 }

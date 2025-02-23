@@ -2,15 +2,13 @@ package com.mock.mockpaymentsdk
 
 import com.mock.mockpaymentsdk.errors.PaymentSDKPaymentInProgressException
 import com.mock.mockpaymentsdk.internal.PaymentProcessor
-import com.mock.mockpaymentsdk.models.PaymentRequest
 import com.mock.mockpaymentsdk.models.PaymentResponse
-import com.mock.mockpaymentsdk.repositories.PaymentRepository
+import kotlinx.coroutines.*
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
-import java.util.concurrent.CountDownLatch
+import java.util.Collections
 import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 
 class PaymentProcessorTest {
 
@@ -24,56 +22,32 @@ class PaymentProcessorTest {
     }
 
     @Test
-    fun `should generate a unique transaction ID for each payment`() {
-        val latch = CountDownLatch(1)
+    fun `should generate a unique transaction ID for each payment`() = runBlocking {
+        val result = paymentProcessor.processPayment(100, "USD", "user123")
 
-        paymentProcessor.processPayment(100, "USD", "user123") { result ->
-            assertTrue(result.isSuccess)
-            assertEquals("Success", result.getOrNull()?.status)
-            assertNotNull(result.getOrNull()?.transactionId)
-            latch.countDown()
-        }
-
-        latch.await(2, TimeUnit.SECONDS)
+        assertTrue(result.isSuccess)
+        assertEquals("Success", result.getOrNull()?.status)
+        assertNotNull(result.getOrNull()?.transactionId)
     }
 
     @Test
-    fun `should prevent concurrent payments`() {
-        val latch = CountDownLatch(2)
+    fun `should prevent concurrent payments`() = runBlocking {
+        val firstPayment = async { paymentProcessor.processPayment(100, "USD", "user123") }
+        val secondPayment = async { paymentProcessor.processPayment(50, "EUR", "user456") }
 
-        val firstThread = Thread {
-            paymentProcessor.processPayment(100, "USD", "user123") { result ->
-                assertTrue(result.isSuccess)
-            }
-            latch.countDown()
-        }
+        val firstResult = firstPayment.await()
+        val secondResult = secondPayment.await()
 
-        val secondThread = Thread {
-            paymentProcessor.processPayment(50, "EUR", "user456") { result ->
-                assertTrue(result.isFailure)
-                assertTrue(result.exceptionOrNull() is PaymentSDKPaymentInProgressException)
-            }
-            latch.countDown()
-        }
-
-        firstThread.start()
-        secondThread.start()
-        latch.await(3, TimeUnit.SECONDS)
-
-        firstThread.join()
-        secondThread.join()
+        assertTrue(firstResult.isSuccess)
+        assertTrue(secondResult.isFailure)
+        assertTrue(secondResult.exceptionOrNull() is PaymentSDKPaymentInProgressException)
     }
 
     @Test
-    fun `should call repository with correct parameters`() {
-        val latch = CountDownLatch(1)
+    fun `should call repository with correct parameters`() = runBlocking {
+        val result = paymentProcessor.processPayment(100, "USD", "user123")
 
-        paymentProcessor.processPayment(100, "USD", "user123") { result ->
-            assertTrue(result.isSuccess)
-            latch.countDown()
-        }
-
-        latch.await(2, TimeUnit.SECONDS)
+        assertTrue(result.isSuccess)
 
         val storedRequest = fakeRepository.lastRequest
         assertNotNull(storedRequest)
@@ -83,71 +57,44 @@ class PaymentProcessorTest {
     }
 
     @Test
-    fun `should reset payment state after completion`() {
-        val latch = CountDownLatch(2)
+    fun `should reset payment state after completion`() = runBlocking {
+        val firstPayment = async { paymentProcessor.processPayment(100, "USD", "user123") }
+        assertTrue(firstPayment.await().isSuccess)
 
-        paymentProcessor.processPayment(100, "USD", "user123") { result ->
-            assertTrue(result.isSuccess)
-            latch.countDown()
-        }
-
-        latch.await(2, TimeUnit.SECONDS)
-
-        val secondThread = Thread {
-            paymentProcessor.processPayment(50, "EUR", "user456") { result ->
-                assertTrue(result.isSuccess)
-                latch.countDown()
-            }
-        }
-
-        secondThread.start()
-        secondThread.join()
+        val secondPayment = async { paymentProcessor.processPayment(50, "EUR", "user456") }
+        assertTrue(secondPayment.await().isSuccess)
     }
 
     @Test
-    fun `should allow new payments after a failed transaction`() {
+    fun `should allow new payments after a failed transaction`() = runBlocking {
         fakeRepository.shouldFail = true
-        val latch = CountDownLatch(2)
+        val firstResult = paymentProcessor.processPayment(100, "USD", "user123")
 
-        paymentProcessor.processPayment(100, "USD", "user123") { result ->
-            assertFalse(result.isSuccess)
-            latch.countDown()
-        }
-
-        latch.await(2, TimeUnit.SECONDS)
+        assertFalse(firstResult.isSuccess)
 
         fakeRepository.shouldFail = false
+        val secondResult = paymentProcessor.processPayment(200, "EUR", "user456")
 
-        val secondLatch = CountDownLatch(1)
-        paymentProcessor.processPayment(200, "EUR", "user456") { result ->
-            assertTrue(result.isSuccess)
-            secondLatch.countDown()
-        }
-
-        secondLatch.await(2, TimeUnit.SECONDS)
+        assertTrue(secondResult.isSuccess)
     }
 
     @Test
-    fun `should ensure thread safety when handling multiple payments`() {
+    fun `should ensure thread safety when handling multiple payments`() = runBlocking {
         val executor = Executors.newFixedThreadPool(5)
-        val latch = CountDownLatch(5)
-        val transactionIds = mutableSetOf<String>()
+        val transactionIds = Collections.synchronizedSet(mutableSetOf<String>())
+
+        val jobs = mutableListOf<Deferred<Result<PaymentResponse>>>()
 
         repeat(5) {
-            executor.execute {
-                paymentProcessor.processPayment(100, "USD", "user123") { result ->
-                    synchronized(transactionIds) {
-                        transactionIds.add(result.getOrNull()?.transactionId ?: "")
-                    }
-                }
-                latch.countDown()
-            }
+            jobs.add(async { paymentProcessor.processPayment(100, "USD", "user123") })
         }
 
-        latch.await(5, TimeUnit.SECONDS)
+        jobs.awaitAll().forEach { result ->
+            result.getOrNull()?.transactionId?.let { transactionIds.add(it) }
+        }
+
         executor.shutdown()
 
-        //TODO Only one transaction should be in progress at a time
         assertEquals(1, transactionIds.size)
     }
 }
