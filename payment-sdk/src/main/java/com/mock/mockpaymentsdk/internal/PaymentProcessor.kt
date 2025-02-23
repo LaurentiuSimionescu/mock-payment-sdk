@@ -17,7 +17,7 @@ internal class PaymentProcessor(private val repository: PaymentRepository) {
     private var currentTransactionId: String? = null
 
     suspend fun processPayment(
-        amount: Int,
+        amount: Number,
         currency: String,
         recipient: String
     ): Result<PaymentResponse> {

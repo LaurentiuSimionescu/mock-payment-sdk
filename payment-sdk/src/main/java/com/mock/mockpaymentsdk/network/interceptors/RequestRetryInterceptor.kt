@@ -1,7 +1,7 @@
 package com.mock.mockpaymentsdk.network.interceptors
 
-import com.mock.mockpaymentsdk.errors.PaymentRequestError
-import com.mock.mockpaymentsdk.errors.PaymentRetryRequestError
+import com.mock.mockpaymentsdk.errors.PaymentRequestException
+import com.mock.mockpaymentsdk.errors.PaymentRetryRequestException
 import okhttp3.Interceptor
 import okhttp3.Response
 import java.io.IOException
@@ -10,7 +10,7 @@ internal class RequestRetryInterceptor(private val maxRetries: Int = 3) : Interc
     override fun intercept(chain: Interceptor.Chain): Response {
         var attempts = 0
         var response: Response? = null
-        var exception: PaymentRequestError? = null
+        var exception: PaymentRequestException? = null
 
         do {
             attempts++
@@ -18,12 +18,12 @@ internal class RequestRetryInterceptor(private val maxRetries: Int = 3) : Interc
                 response = chain.proceed(chain.request())
                 if (response.isSuccessful) return response
             } catch (e: IOException) {
-                exception = PaymentRequestError(e)
+                exception = PaymentRequestException(e)
             }
         } while (attempts < maxRetries)
 
         //TODO sometimes it is ok to fail, for example the user does not have funds
         // so based on a code, decide if the retry is still needed
-        return response ?: throw exception ?: PaymentRetryRequestError()
+        return response ?: throw exception ?: PaymentRetryRequestException()
     }
 }

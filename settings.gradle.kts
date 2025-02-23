@@ -20,4 +20,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "PaymentSDK"
-include(":app")
+include(":payment-sdk")
